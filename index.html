@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DrowseGuard — Driver HUD</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Barlow:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:    #06090f;
+      --ok:    #00e5a0;
+      --warn:  #ffb020;
+      --crit:  #ff3b5c;
+      --blue:  #3d9bff;
+      --dim:   #3a4a62;
+      --text:  #c8d8f0;
+      --mono:  'Space Mono', monospace;
+      --sans:  'Barlow', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); }
+
+    /* ── FULL SCREEN CAMERA ── */
+    #cam {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* scanline overlay */
+    #scanlines {
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 3px,
+        rgba(0,0,0,0.07) 3px, rgba(0,0,0,0.07) 4px
+      );
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* ── HUD OVERLAY LAYER ── */
+    #hud {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+      font-family: var(--mono);
+    }
+
+    /* corner brackets */
+    .corner {
+      position: absolute;
+      width: 28px; height: 28px;
+      border-color: rgba(61,155,255,0.5);
+      border-style: solid;
+    }
+    .corner.tl { top:16px; left:16px;   border-width:2px 0 0 2px; }
+    .corner.tr { top:16px; right:16px;  border-width:2px 2px 0 0; }
+    .corner.bl { bottom:16px; left:16px;  border-width:0 0 2px 2px; }
+    .corner.br { bottom:16px; right:16px; border-width:0 2px 2px 0; }
+
+    /* top-left: logo */
+    #logo {
+      position: absolute;
+      top: 20px; left: 52px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 3px;
+      color: rgba(61,155,255,0.7);
+      text-transform: uppercase;
+    }
+
+    /* top-right: session time + level */
+    #top-right {
+      position: absolute;
+      top: 16px; right: 52px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
+    #session-clock {
+      font-size: 0.7rem;
+      color: var(--dim);
+      letter-spacing: 1px;
+    }
+    #level-badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      padding: 3px 10px;
+      border-radius: 3px;
+      transition: all 0.3s;
+    }
+    .lvl-ok   { color: var(--ok);   border: 1px solid rgba(0,229,160,0.4);  background: rgba(0,229,160,0.08); }
+    .lvl-warn { color: var(--warn); border: 1px solid rgba(255,176,32,0.5); background: rgba(255,176,32,0.1); }
+    .lvl-crit { color: var(--crit); border: 1px solid rgba(255,59,92,0.6);  background: rgba(255,59,92,0.12);
+                animation: critPulse 0.7s infinite alternate; }
+    @keyframes critPulse {
+      to { box-shadow: 0 0 14px rgba(255,59,92,0.6); }
+    }
+
+    /* bottom metrics strip */
+    #metrics {
+      position: absolute;
+      bottom: 100px; left: 0; right: 0;
+      display: flex;
+      justify-content: center;
+      gap: 2px;
+      pointer-events: none;
+    }
+    .metric {
+      background: rgba(6,9,15,0.72);
+      border: 1px solid rgba(255,255,255,0.07);
+      padding: 6px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      min-width: 80px;
+    }
+    .metric:first-child { border-radius: 6px 0 0 6px; }
+    .metric:last-child  { border-radius: 0 6px 6px 0; }
+    .m-label { font-size: 0.5rem; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; }
+    .m-val   { font-size: 0.9rem; font-weight: 700; color: var(--ok); transition: color 0.3s; }
+    .m-warn  { color: var(--warn) !important; }
+    .m-crit  { color: var(--crit) !important; }
+
+    /* ── ALERT BANNER ── */
+    #alert-banner {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 60px;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .alert-chip {
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      padding: 10px 28px;
+      border-radius: 4px;
+      animation: chipIn 0.25s ease;
+    }
+    @keyframes chipIn { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:none; } }
+    .chip-warn { background: rgba(255,176,32,0.18); border: 1px solid var(--warn); color: var(--warn); }
+    .chip-crit { background: rgba(255,59,92,0.2);  border: 1px solid var(--crit); color: var(--crit); }
+
+    /* ── VOICE ASSISTANT (bottom center) ── */
+    #voice-area {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-bottom: 20px;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    /* Last spoken message bubble */
+    #speech-bubble {
+      background: rgba(6,9,15,0.85);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 24px;
+      padding: 10px 22px;
+      max-width: 500px;
+      text-align: center;
+      font-family: var(--sans);
+      font-size: 0.88rem;
+      color: var(--text);
+      line-height: 1.5;
+      display: none;
+      pointer-events: none;
+    }
+    #speech-bubble.visible { display: block; animation: fadeUp 0.3s ease; }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+
+    /* Mic button */
+    #mic-btn {
+      pointer-events: all;
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      border: 2px solid rgba(61,155,255,0.5);
+      background: rgba(6,9,15,0.85);
+      color: var(--blue);
+      font-size: 1.6rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      position: relative;
+    }
+    #mic-btn:hover { border-color: var(--blue); background: rgba(61,155,255,0.12); }
+    #mic-btn.listening {
+      border-color: var(--crit);
+      background: rgba(255,59,92,0.15);
+      color: var(--crit);
+      animation: micPulse 1s infinite;
+    }
+    @keyframes micPulse {
+      0%,100% { box-shadow: 0 0 0 0 rgba(255,59,92,0); }
+      50%      { box-shadow: 0 0 0 12px rgba(255,59,92,0.2); }
+    }
+    #mic-btn.speaking {
+      border-color: var(--ok);
+      color: var(--ok);
+    }
+    #mic-label {
+      font-family: var(--mono);
+      font-size: 0.58rem;
+      color: var(--dim);
+      letter-spacing: 1px;
+      pointer-events: none;
+    }
+
+    /* stats link */
+    #stats-link {
+      position: fixed;
+      bottom: 20px; right: 20px;
+      z-index: 10;
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      color: var(--dim);
+      text-decoration: none;
+      letter-spacing: 1px;
+      border: 1px solid var(--dim);
+      padding: 5px 10px;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+    #stats-link:hover { color: var(--blue); border-color: var(--blue); }
+  </style>
+</head>
+<body>
+
+<img id="cam" src="/video_feed" alt="camera"/>
+<div id="scanlines"></div>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="corner tl"></div>
+  <div class="corner tr"></div>
+  <div class="corner bl"></div>
+  <div class="corner br"></div>
+
+  <div id="logo">DrowseGuard</div>
+
+  <div id="top-right">
+    <div id="session-clock">00:00:00</div>
+    <div id="level-badge" class="lvl-ok">CLEAR</div>
+  </div>
+
+  <!-- Alert banners -->
+  <div id="alert-banner"></div>
+
+  <!-- Bottom metrics -->
+  <div id="metrics">
+    <div class="metric">
+      <div class="m-label">PERCLOS</div>
+      <div class="m-val" id="m-perclos">—</div>
+    </div>
+    <div class="metric">
+      <div class="m-label">Blinks/min</div>
+      <div class="m-val" id="m-blinks">—</div>
+    </div>
+    <div class="metric">
+      <div class="m-label">Session</div>
+      <div class="m-val" id="m-session">0 min</div>
+    </div>
+    <div class="metric">
+      <div class="m-label">Alerts</div>
+      <div class="m-val" id="m-alerts">0</div>
+    </div>
+  </div>
+</div>
+
+<!-- Voice area -->
+<div id="voice-area">
+  <div id="speech-bubble"></div>
+  <button id="mic-btn" title="Hold to speak">🎙️</button>
+  <div id="mic-label">TAP TO SPEAK</div>
+</div>
+
+<a id="stats-link" href="/stats" target="_blank">📊 STATS</a>
+
+<script>
+  // ── Session clock ────────────────────────
+  const sessionStart = Date.now();
+  function pad(n) { return String(n).padStart(2,'0'); }
+  function updateClock() {
+    const s = Math.floor((Date.now() - sessionStart) / 1000);
+    document.getElementById('session-clock').textContent =
+      `${pad(Math.floor(s/3600))}:${pad(Math.floor((s%3600)/60))}:${pad(s%60)}`;
+    document.getElementById('m-session').textContent = Math.floor(s/60) + ' min';
+  }
+  setInterval(updateClock, 1000);
+
+  // ── Status polling ───────────────────────
+  const SESSION_ID = 'sess_' + Math.random().toString(36).slice(2);
+  let lastLevel = 0;
+  let totalAlerts = 0;
+
+  async function pollStatus() {
+    try {
+      const d = await fetch('/api/status').then(r => r.json());
+      const { alerts, stats, level } = d;
+
+      // Level badge
+      const badge = document.getElementById('level-badge');
+      badge.className = 'level-badge ' + ['lvl-ok','lvl-warn','lvl-crit'][level];
+      badge.textContent = ['CLEAR','WARNING','CRITICAL'][level];
+
+      // Metrics
+      const perc = stats.perclos != null ? (stats.perclos*100).toFixed(0)+'%' : '—';
+      const bpm  = stats.blink_rate != null ? stats.blink_rate.toFixed(0) : '—';
+      totalAlerts = Object.values(stats.alert_count||{}).reduce((a,b)=>a+b,0);
+
+      const percEl = document.getElementById('m-perclos');
+      percEl.textContent = perc;
+      percEl.className = 'm-val' + (stats.perclos>=0.35?' m-crit':stats.perclos>=0.20?' m-warn':'');
+
+      const bpmEl = document.getElementById('m-blinks');
+      bpmEl.textContent = bpm;
+      bpmEl.className = 'm-val' + (stats.blink_rate!==null&&stats.blink_rate<8?' m-warn':'');
+
+      document.getElementById('m-alerts').textContent = totalAlerts;
+
+      // Alert banners
+      const banner = document.getElementById('alert-banner');
+      banner.innerHTML = '';
+      if (alerts && alerts.length > 0) {
+        banner.style.display = 'flex';
+        alerts.forEach(a => {
+          const chip = document.createElement('div');
+          chip.className = 'alert-chip ' + (a.level === 2 ? 'chip-crit' : 'chip-warn');
+          chip.textContent = a.msg;
+          banner.appendChild(chip);
+        });
+      } else {
+        banner.style.display = 'none';
+      }
+
+      // Auto-trigger voice on new critical
+      if (level === 2 && lastLevel < 2) {
+        sendVoiceMessage('I just got a critical drowsiness alert. What should I do?');
+      }
+      lastLevel = level;
+    } catch(e) {}
+  }
+  setInterval(pollStatus, 900);
+  pollStatus();
+
+  // ── Voice assistant ──────────────────────
+  const micBtn    = document.getElementById('mic-btn');
+  const micLabel  = document.getElementById('mic-label');
+  const bubble    = document.getElementById('speech-bubble');
+  let recognition = null;
+  let isListening = false;
+
+  // Browser TTS
+  function speak(text) {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.rate   = 0.95;
+    utt.volume = 1.0;
+    // prefer a natural voice
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v => v.lang.startsWith('en') && v.localService);
+    if (preferred) utt.voice = preferred;
+
+    micBtn.classList.add('speaking');
+    micBtn.textContent = '🔊';
+    utt.onend = () => {
+      micBtn.classList.remove('speaking');
+      micBtn.textContent = '🎙️';
+    };
+    window.speechSynthesis.speak(utt);
+  }
+
+  function showBubble(text) {
+    bubble.textContent = text;
+    bubble.classList.add('visible');
+    clearTimeout(bubble._timer);
+    bubble._timer = setTimeout(() => bubble.classList.remove('visible'), 6000);
+  }
+
+  async function sendVoiceMessage(text) {
+    showBubble('You: ' + text);
+    micLabel.textContent = 'THINKING…';
+    try {
+      const r = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, session_id: SESSION_ID })
+      });
+      const data = await r.json();
+      const reply = data.reply || 'Sorry, I could not respond.';
+      showBubble(reply);
+      speak(reply);
+    } catch(e) {
+      speak('Connection error. Please try again.');
+    }
+    micLabel.textContent = 'TAP TO SPEAK';
+  }
+
+  // Web Speech API setup
+  function setupRecognition() {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) {
+      micLabel.textContent = 'MIC NOT SUPPORTED';
+      micBtn.style.opacity = '0.4';
+      return null;
+    }
+    const rec = new SpeechRec();
+    rec.continuous     = false;
+    rec.interimResults = false;
+    rec.lang           = 'en-US';
+
+    rec.onresult = (e) => {
+      const transcript = e.results[0][0].transcript;
+      sendVoiceMessage(transcript);
+    };
+    rec.onend = () => {
+      isListening = false;
+      micBtn.classList.remove('listening');
+      micBtn.textContent = '🎙️';
+      micLabel.textContent = 'TAP TO SPEAK';
+    };
+    rec.onerror = (e) => {
+      isListening = false;
+      micBtn.classList.remove('listening');
+      micBtn.textContent = '🎙️';
+      micLabel.textContent = e.error === 'not-allowed' ? 'MIC BLOCKED' : 'TAP TO SPEAK';
+    };
+    return rec;
+  }
+
+  micBtn.addEventListener('click', () => {
+    if (!recognition) recognition = setupRecognition();
+    if (!recognition) return;
+
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+
+    if (isListening) {
+      recognition.stop();
+    } else {
+      isListening = true;
+      micBtn.classList.add('listening');
+      micBtn.textContent = '⏹️';
+      micLabel.textContent = 'LISTENING…';
+      recognition.start();
+    }
+  });
+
+  // Load voices for TTS
+  if (window.speechSynthesis) {
+    window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+  }
+
+  // Greet on load
+  setTimeout(() => {
+    speak("DrowseGuard active. I'm monitoring you. Tap the mic button to talk to me.");
+  }, 1500);
+</script>
+</body>
+</html>

@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DrowseGuard — Stats</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Barlow:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:    #06090f;
+      --panel: #0b1018;
+      --border:#1a2535;
+      --ok:    #00e5a0;
+      --warn:  #ffb020;
+      --crit:  #ff3b5c;
+      --blue:  #3d9bff;
+      --dim:   #3a4a62;
+      --text:  #c8d8f0;
+      --text2: #6a7f9a;
+      --mono:  'Space Mono', monospace;
+      --sans:  'Barlow', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 28px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo {
+      font-family: var(--mono);
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: 3px;
+      color: var(--blue);
+    }
+    .back-btn {
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      color: var(--dim);
+      text-decoration: none;
+      border: 1px solid var(--border);
+      padding: 5px 12px;
+      border-radius: 4px;
+      letter-spacing: 1px;
+      transition: all 0.2s;
+    }
+    .back-btn:hover { color: var(--blue); border-color: var(--blue); }
+
+    /* ── STAT CARDS ── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 18px;
+    }
+    .card-label {
+      font-family: var(--mono);
+      font-size: 0.55rem;
+      color: var(--dim);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .card-val {
+      font-family: var(--mono);
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--ok);
+      transition: color 0.3s;
+    }
+    .card-sub { font-size: 0.7rem; color: var(--text2); margin-top: 4px; }
+    .val-warn { color: var(--warn) !important; }
+    .val-crit { color: var(--crit) !important; }
+
+    /* ── ALERT BREAKDOWN ── */
+    .section-title {
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      color: var(--dim);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .breakdown {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .breakdown-item {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .b-icon { font-size: 1.4rem; }
+    .b-count {
+      font-family: var(--mono);
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--warn);
+    }
+    .b-label { font-size: 0.72rem; color: var(--text2); }
+
+    /* ── PERCLOS BAR ── */
+    .perclos-wrap {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 28px;
+    }
+    .perclos-bar-bg {
+      background: rgba(255,255,255,0.05);
+      border-radius: 4px;
+      height: 12px;
+      margin-top: 10px;
+      overflow: hidden;
+    }
+    .perclos-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      background: var(--ok);
+      transition: width 0.5s ease, background 0.3s;
+      width: 0%;
+    }
+    .perclos-zones {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 6px;
+      font-family: var(--mono);
+      font-size: 0.55rem;
+      color: var(--dim);
+    }
+
+    /* ── LOG TABLE ── */
+    .log-wrap {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .log-header {
+      display: grid;
+      grid-template-columns: 90px 90px 1fr;
+      padding: 10px 16px;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 0.58rem;
+      color: var(--dim);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    #log-body { max-height: 320px; overflow-y: auto; }
+    .log-row {
+      display: grid;
+      grid-template-columns: 90px 90px 1fr;
+      padding: 9px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      font-size: 0.78rem;
+      transition: background 0.15s;
+    }
+    .log-row:hover { background: rgba(255,255,255,0.02); }
+    .log-time  { font-family: var(--mono); font-size: 0.65rem; color: var(--dim); }
+    .log-level-warn { color: var(--warn); font-family: var(--mono); font-size: 0.65rem; }
+    .log-level-crit { color: var(--crit); font-family: var(--mono); font-size: 0.65rem; }
+    .log-empty { padding: 20px 16px; color: var(--dim); font-size: 0.8rem; }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">DROWSEGUARD / STATS</div>
+  <a class="back-btn" href="/">← BACK TO HUD</a>
+</header>
+
+<!-- Stat cards -->
+<div class="cards">
+  <div class="card">
+    <div class="card-label">Session Time</div>
+    <div class="card-val" id="c-session">—</div>
+    <div class="card-sub">hh:mm:ss</div>
+  </div>
+  <div class="card">
+    <div class="card-label">PERCLOS</div>
+    <div class="card-val" id="c-perclos">—</div>
+    <div class="card-sub">30-sec window</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Blinks / min</div>
+    <div class="card-val" id="c-blinks">—</div>
+    <div class="card-sub">Normal: 12–20</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Total Blinks</div>
+    <div class="card-val" id="c-total-blinks">—</div>
+    <div class="card-sub">since session start</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Alert Level</div>
+    <div class="card-val" id="c-level">—</div>
+    <div class="card-sub">current</div>
+  </div>
+</div>
+
+<!-- Alert breakdown -->
+<div class="section-title">Alert Breakdown</div>
+<div class="breakdown">
+  <div class="breakdown-item">
+    <div class="b-icon">😴</div>
+    <div>
+      <div class="b-count" id="b-eyes">0</div>
+      <div class="b-label">Eyes closed</div>
+    </div>
+  </div>
+  <div class="breakdown-item">
+    <div class="b-icon">🥱</div>
+    <div>
+      <div class="b-count" id="b-yawn">0</div>
+      <div class="b-label">Yawns</div>
+    </div>
+  </div>
+  <div class="breakdown-item">
+    <div class="b-icon">⚠️</div>
+    <div>
+      <div class="b-count" id="b-head">0</div>
+      <div class="b-label">Head position</div>
+    </div>
+  </div>
+  <div class="breakdown-item">
+    <div class="b-icon">📊</div>
+    <div>
+      <div class="b-count" id="b-perclos">0</div>
+      <div class="b-label">PERCLOS events</div>
+    </div>
+  </div>
+</div>
+
+<!-- PERCLOS bar -->
+<div class="perclos-wrap">
+  <div class="section-title" style="margin-bottom:4px">PERCLOS Live Gauge</div>
+  <div style="font-size:0.72rem;color:var(--text2)">% eye closure over last 30 seconds</div>
+  <div class="perclos-bar-bg">
+    <div class="perclos-bar-fill" id="perclos-fill"></div>
+  </div>
+  <div class="perclos-zones">
+    <span>0%</span>
+    <span style="color:var(--warn)">20% warn</span>
+    <span style="color:var(--crit)">35% critical</span>
+    <span>100%</span>
+  </div>
+</div>
+
+<!-- Log table -->
+<div class="section-title">Alert History Log</div>
+<div class="log-wrap">
+  <div class="log-header">
+    <span>Time</span>
+    <span>Level</span>
+    <span>Detail</span>
+  </div>
+  <div id="log-body">
+    <div class="log-empty">No alerts recorded yet.</div>
+  </div>
+</div>
+
+<script>
+  function pad(n) { return String(n).padStart(2,'0'); }
+  const sessionStart = Date.now();
+
+  async function refresh() {
+    try {
+      const d = await fetch('/api/status').then(r => r.json());
+      const s = d.stats || {};
+
+      // Session time
+      const sec = Math.floor((Date.now() - sessionStart) / 1000);
+      document.getElementById('c-session').textContent =
+        `${pad(Math.floor(sec/3600))}:${pad(Math.floor((sec%3600)/60))}:${pad(sec%60)}`;
+
+      // PERCLOS
+      const perc = s.perclos != null ? (s.perclos*100).toFixed(1)+'%' : '—';
+      const percEl = document.getElementById('c-perclos');
+      percEl.textContent = perc;
+      percEl.className = 'card-val' + (s.perclos>=0.35?' val-crit':s.perclos>=0.20?' val-warn':'');
+
+      // bar fill
+      const pct = Math.min((s.perclos||0)*100, 100);
+      const fill = document.getElementById('perclos-fill');
+      fill.style.width = pct + '%';
+      fill.style.background = pct >= 35 ? 'var(--crit)' : pct >= 20 ? 'var(--warn)' : 'var(--ok)';
+
+      // Blinks
+      const bpm = s.blink_rate != null ? s.blink_rate.toFixed(0) : '—';
+      const bpmEl = document.getElementById('c-blinks');
+      bpmEl.textContent = bpm;
+      bpmEl.className = 'card-val' + (s.blink_rate!==null&&s.blink_rate<8?' val-warn':'');
+
+      document.getElementById('c-total-blinks').textContent = s.total_blinks ?? '—';
+
+      // Level
+      const lvlEl = document.getElementById('c-level');
+      lvlEl.textContent = s.current_level || 'OK';
+      lvlEl.className = 'card-val' + (s.current_level==='CRITICAL'?' val-crit':s.current_level==='WARNING'?' val-warn':'');
+
+      // Alert breakdown
+      const ac = s.alert_count || {};
+      document.getElementById('b-eyes').textContent    = ac.eyes    || 0;
+      document.getElementById('b-yawn').textContent    = ac.yawn    || 0;
+      document.getElementById('b-head').textContent    = ac.head    || 0;
+      document.getElementById('b-perclos').textContent = ac.perclos || 0;
+
+    } catch(e) {}
+  }
+
+  async function refreshLog() {
+    try {
+      const d = await fetch('/api/log').then(r => r.json());
+      const entries = (d.entries || []).reverse().slice(0, 60);
+      const body = document.getElementById('log-body');
+      if (entries.length === 0) {
+        body.innerHTML = '<div class="log-empty">No alerts recorded yet.</div>';
+        return;
+      }
+      body.innerHTML = '';
+      entries.forEach(e => {
+        const row  = document.createElement('div');
+        row.className = 'log-row';
+        const ts   = (e.timestamp || '').slice(11,19);
+        const lvlCls = e.level === 'CRITICAL' ? 'log-level-crit' : 'log-level-warn';
+        row.innerHTML = `
+          <span class="log-time">${ts}</span>
+          <span class="${lvlCls}">${e.level}</span>
+          <span>${e.detail || e.type || '—'}</span>
+        `;
+        body.appendChild(row);
+      });
+    } catch(e) {}
+  }
+
+  setInterval(refresh, 1000);
+  setInterval(refreshLog, 4000);
+  refresh();
+  refreshLog();
+</script>
+</body>
+</html>
